@@ -1,0 +1,47 @@
+<?php
+require 'db.php';
+
+date_default_timezone_set('Asia/Tashkent'); // your local time
+
+// Get all active actions
+$actions = $conn->query("SELECT * FROM actions WHERE status = 'active'");
+
+while ($action = $actions->fetch_assoc()) {
+    $action_id = $action['action_id'];
+    $period = (int)$action['period'];
+
+    // Get last bid time
+    $lastBidResult = $conn->query("
+        SELECT MAX(time) as last_time 
+        FROM action_users 
+        WHERE action_id = $action_id
+    ");
+    $lastBidData = $lastBidResult->fetch_assoc();
+
+    if (!$lastBidData['last_time']) continue; // No bids yet
+
+    $lastBidTime = strtotime($lastBidData['last_time']);
+    $now = time();
+
+    // If no bid within period (minutes), declare winner
+    if (($now - $lastBidTime) >= ($period * 60)) {
+
+        // Get highest bid
+        $winnerResult = $conn->query("
+            SELECT phone_number FROM action_users 
+            WHERE action_id = $action_id 
+            ORDER BY bid_ball DESC LIMIT 1
+        ");
+        $winner = $winnerResult->fetch_assoc();
+
+        if ($winner) {
+            $winnerPhone = $winner['phone_number'];
+
+            // Set winner
+            $conn->query("UPDATE action_users SET winner = 1 WHERE action_id = $action_id AND phone_number = '$winnerPhone'");
+            $conn->query("UPDATE actions SET status = 'finished', winner = '$winnerPhone' WHERE action_id = $action_id");
+
+            echo "🏆 Action $action_id winner: $winnerPhone\n";
+        }
+    }
+}
